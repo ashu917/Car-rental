@@ -60,7 +60,7 @@ app.get('/auth/google', passport.authenticate('google', {
 // Google callback
 app.get(
   '/auth/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/` }),
+  passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'https://car-rental-frontend-l2gx.onrender.com/'}/` }),
   googleAuth
 );
 
