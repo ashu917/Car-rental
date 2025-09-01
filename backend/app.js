@@ -26,8 +26,21 @@ const app = express();
 app.use(compression());
 
 // ✅ CORS setup
+// ✅ CORS setup (allow multiple origins)
+const allowedOrigins = [
+  "https://car-rental-frontend-l2gx.onrender.com", // deployed frontend
+  "http://localhost:5173" // local dev
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'https://car-rental-frontend-l2gx.onrender.com:5173', 
+  origin: function (origin, callback) {
+    // allow requests with no origin (like mobile apps or curl)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true
 }));
 
