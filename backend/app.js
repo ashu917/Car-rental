@@ -56,7 +56,8 @@ connectDb();
 passport.use(new GoogleStrategy({
   clientID: process.env.GOOGLE_CLIENT_ID,
   clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-  callbackURL: `${process.env.BACKEND_URL || 'https://car-rental-frontend-l2gx.onrender.com'}/auth/google/callback`
+  // Callback must point to the BACKEND domain (not the frontend) to avoid redirect_uri_mismatch
+  callbackURL: `${process.env.BACKEND_URL || 'http://localhost:8000'}/auth/google/callback`
 }, (accessToken, refreshToken, profile, done) => {
   return done(null, profile);
 }));
@@ -73,7 +74,7 @@ app.get('/auth/google', passport.authenticate('google', {
 // Google callback
 app.get(
   '/auth/google/callback',
-  passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'https://car-rental-frontend-l2gx.onrender.com'}/` }),
+  passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/` }),
   googleAuth
 );
 
