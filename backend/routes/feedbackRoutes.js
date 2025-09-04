@@ -5,7 +5,11 @@ import {
     getUserFeedback, 
     getOwnerFeedback,
     moderateFeedback,
-    deleteFeedback 
+    deleteFeedback, 
+    updateMyFeedback,
+    deleteMyFeedback,
+    replyToFeedback,
+    deleteReplyFromFeedback
 } from '../controllers/feedbackController.js';
 import { protect } from '../middleware/auth.js';
 
@@ -17,11 +21,15 @@ router.get('/testimonials', getTestimonials);
 // Protected routes - require authentication
 router.post('/submit', protect, submitFeedback);
 router.get('/user', protect, getUserFeedback);
+router.patch('/user/:feedbackId', protect, updateMyFeedback);
+router.delete('/user/:feedbackId', protect, deleteMyFeedback);
 
-// Owner routes - require owner authentication
+// Owner reply endpoint
+router.post('/reply/:feedbackId', protect, replyToFeedback);
+router.delete('/reply/:feedbackId', protect, deleteReplyFromFeedback);
+
+// Owner management routes
 router.get('/owner', protect, getOwnerFeedback);
-
-// Owner routes - require owner privileges
 router.patch('/moderate/:feedbackId', protect, moderateFeedback);
 router.delete('/delete/:feedbackId', protect, deleteFeedback);
 

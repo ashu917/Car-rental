@@ -3,12 +3,16 @@ import { assets } from '../assets/assets'
 import Title from '../Components/Title'
 import { useAppContext } from '../Components/Context/AppContext'
 import toast from 'react-hot-toast'
+import Swal from 'sweetalert2'
+import EditBookingModal from '../Components/EditBookingModal'
 
 const MyBookings = () => {
 
   const{axios, user,currency}= useAppContext();
 
   const [bookings, setBookings] = useState([])
+  const [showEdit, setShowEdit] = useState(false)
+  const [selectedBooking, setSelectedBooking] = useState(null)
  
 
   const fetchMyBookings = async () => {
@@ -27,6 +31,47 @@ const MyBookings = () => {
   useEffect(() => {
     user && fetchMyBookings()
   }, [user])
+
+  const handleCancel = async (bookingId) => {
+    try {
+      const res = await Swal.fire({
+        title: 'Cancel this booking?',
+        text: 'This action cannot be undone.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#e02424',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Yes, cancel it',
+      })
+      if (!res.isConfirmed) return
+      const { data } = await axios.post('/api/booking/cancel', { bookingId })
+      if (data.success) {
+        await Swal.fire({ title: 'Cancelled', text: data.message || 'Booking cancelled', icon: 'success', timer: 1400, showConfirmButton: false })
+        fetchMyBookings()
+      } else {
+        await Swal.fire({ title: 'Failed', text: data.message || 'Failed to cancel', icon: 'error' })
+      }
+    } catch (error) {
+      await Swal.fire({ title: 'Error', text: error.response?.data?.message || error.message, icon: 'error' })
+    }
+  }
+
+  const openEdit = (booking) => { setSelectedBooking(booking); setShowEdit(true) }
+
+  const submitEdit = async ({ bookingId, pickupDate, returnDate }) => {
+    try {
+      const { data } = await axios.post('/api/booking/update-dates', { bookingId, pickupDate, returnDate })
+      if (data.success) {
+        setShowEdit(false)
+        await Swal.fire({ title: 'Updated', text: data.message || 'Booking updated', icon: 'success', timer: 1400, showConfirmButton: false })
+        fetchMyBookings()
+      } else {
+        await Swal.fire({ title: 'Failed', text: data.message || 'Failed to update', icon: 'error' })
+      }
+    } catch (error) {
+      await Swal.fire({ title: 'Error', text: error.response?.data?.message || error.message, icon: 'error' })
+    }
+  }
 
   return (
     <div className='px-6 md:px-16 lg:px-24 xl:px-32 2xl:px-48 mt-16 text-sm max-w-7xl'>
@@ -127,14 +172,41 @@ const MyBookings = () => {
                     : 'N/A'}
                 </p>
               </div>
+              <div className='flex items-center justify-end gap-2'>
+                <button
+                  onClick={() => openEdit(booking)}
+                  className='px-3 py-1.5 border rounded-lg'
+                  disabled={booking.status === 'cancelled'}
+                >
+                  Update Dates
+                </button>
+                <button
+                  onClick={() => handleCancel(booking._id)}
+                  className='px-3 py-1.5 border rounded-lg text-red-600'
+                  disabled={booking.status === 'cancelled'}
+                >
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         ))}
       </div>
+      <EditBookingModal
+        open={showEdit}
+        onClose={() => setShowEdit(false)}
+        booking={selectedBooking}
+        onSubmit={submitEdit}
+      />
     </div>
   )
 }
 
 export default MyBookings
+
+// Modal mount
+// Keep outside of map to avoid multiple instances
+// but we mount it at the end to keep DOM simple
+
 
 

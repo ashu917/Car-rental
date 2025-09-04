@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useAppContext } from './Context/AppContext';
 import { toast } from 'react-hot-toast';
+import Swal from 'sweetalert2';
 import { assets } from '../assets/assets';
 
 const FeedbackForm = ({ onClose, onFeedbackSubmitted }) => {
@@ -21,37 +22,44 @@ const FeedbackForm = ({ onClose, onFeedbackSubmitted }) => {
     if (!requireAuth('submit feedback')) return;
     
     if (rating === 0) {
-      toast.error('Please select a rating');
+      await Swal.fire({ title: 'Rating required', text: 'Please select a rating', icon: 'info' });
       return;
     }
-    
     if (!comment.trim()) {
-      toast.error('Please enter your feedback');
+      await Swal.fire({ title: 'Write your feedback', text: 'Please enter your experience', icon: 'info' });
       return;
     }
 
-    setIsSubmitting(true);
-    
-    try {
-      const response = await axios.post('/api/feedback/submit', {
-        rating,
-        comment: comment.trim(),
-        // carId is optional - can be undefined for general service feedback
-      });
+    await Swal.fire({
+      title: 'Be positive and honest',
+      text: 'Please give a positive review according to your experience.',
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonText: 'Continue',
+      cancelButtonText: 'Cancel'
+    }).then(async (res) => {
+      if (!res.isConfirmed) return;
 
-      if (response.data.success) {
-        toast.success('Thank you for your feedback! It will be reviewed by our team and may be published as a testimonial on our website.');
-        setRating(0);
-        setComment('');
-        onFeedbackSubmitted();
-        onClose();
+      setIsSubmitting(true);
+      try {
+        const response = await axios.post('/api/feedback/submit', {
+          rating,
+          comment: comment.trim(),
+        });
+        if (response.data.success) {
+          await Swal.fire({ title: 'Thank you!', text: 'Your feedback has been submitted for review.', icon: 'success', timer: 1600, showConfirmButton: false })
+          setRating(0);
+          setComment('');
+          onFeedbackSubmitted();
+          onClose();
+        }
+      } catch (error) {
+        const message = error.response?.data?.message || 'Failed to submit feedback';
+        await Swal.fire({ title: 'Failed', text: message, icon: 'error' })
+      } finally {
+        setIsSubmitting(false);
       }
-    } catch (error) {
-      const message = error.response?.data?.message || 'Failed to submit feedback';
-      toast.error(message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    })
   };
 
   return (

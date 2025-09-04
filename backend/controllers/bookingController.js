@@ -191,3 +191,96 @@ export const  changeBookingStatus= async( req, res)=>{
         res.json({success:false, message:error.message})
     }
 }
+
+// allow a user to cancel their own booking
+export const cancelMyBooking = async (req, res) => {
+    try {
+        const { _id: userId } = req.user
+        const { bookingId } = req.body
+
+        if (!bookingId) {
+            return res.json({ success: false, message: 'bookingId is required' })
+        }
+
+        const booking = await Booking.findById(bookingId)
+        if (!booking) {
+            return res.json({ success: false, message: 'Booking not found' })
+        }
+        if (booking.user.toString() !== userId.toString()) {
+            return res.json({ success: false, message: 'Not authorized to cancel this booking' })
+        }
+        if (booking.status === 'cancelled') {
+            return res.json({ success: true, message: 'Booking already cancelled' })
+        }
+
+        booking.status = 'cancelled'
+        await booking.save()
+
+        // free the car if needed
+        await Car.findByIdAndUpdate(booking.car, { isBooked: false })
+
+        return res.json({ success: true, message: 'Booking cancelled successfully' })
+    } catch (error) {
+        return res.json({ success: false, message: error.message })
+    }
+}
+
+// allow a user to update dates of their own booking
+export const updateMyBookingDates = async (req, res) => {
+    try {
+        const { _id: userId } = req.user
+        const { bookingId, pickupDate, returnDate } = req.body
+
+        if (!bookingId || !pickupDate || !returnDate) {
+            return res.json({ success: false, message: 'bookingId, pickupDate and returnDate are required' })
+        }
+
+        const booking = await Booking.findById(bookingId)
+        if (!booking) {
+            return res.json({ success: false, message: 'Booking not found' })
+        }
+        if (booking.user.toString() !== userId.toString()) {
+            return res.json({ success: false, message: 'Not authorized to update this booking' })
+        }
+        if (booking.status === 'cancelled') {
+            return res.json({ success: false, message: 'Cancelled bookings cannot be updated' })
+        }
+
+        const start = startOfDay(pickupDate)
+        const end = endOfDay(returnDate)
+        if (isNaN(start) || isNaN(end) || start > end) {
+            return res.json({ success: false, message: 'Invalid date range' })
+        }
+
+        // ensure the car is available for the new range, ignoring this booking itself
+        const overlapping = await Booking.find({
+            car: booking.car,
+            _id: { $ne: booking._id },
+            pickupDate: { $lte: end },
+            returnDate: { $gte: start },
+            status: { $ne: 'cancelled' }
+        })
+        if (overlapping.length > 0) {
+            return res.json({ success: false, message: 'Car not available for selected dates' })
+        }
+
+        // recalc price
+        const carData = await Car.findById(booking.car)
+        const picked = new Date(start)
+        const returned = new Date(end)
+        const noOfDays = Math.ceil((returned - picked) / (1000 * 60 * 60 * 24))
+        if (noOfDays <= 0) {
+            return res.json({ success: false, message: 'Return date must be after pickup date' })
+        }
+        const price = (carData?.pricePerDay || 0) * noOfDays
+
+        booking.pickupDate = start
+        booking.returnDate = end
+        booking.price = price
+        await booking.save()
+
+        return res.json({ success: true, message: 'Booking updated successfully' })
+    } catch (error) {
+        return res.json({ success: false, message: error.message })
+    }
+}

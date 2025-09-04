@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAppContext } from '../../Components/Context/AppContext';
 import { toast } from 'react-hot-toast';
 import { assets } from '../../assets/assets';
+import Swal from 'sweetalert2'
 
 const ManageFeedback = () => {
   const [feedback, setFeedback] = useState([]);
@@ -53,20 +54,47 @@ const ManageFeedback = () => {
   };
 
   const handleDelete = async (feedbackId) => {
-    if (!window.confirm('Are you sure you want to delete this feedback? This action cannot be undone.')) {
-      return;
-    }
-    
     try {
+      const res = await Swal.fire({
+        title: 'Delete this review?',
+        text: 'This action cannot be undone.',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#e02424',
+        confirmButtonText: 'Delete'
+      })
+      if (!res.isConfirmed) return
       const response = await axios.delete(`/api/feedback/delete/${feedbackId}`);
       if (response.data.success) {
-        toast.success('Feedback deleted successfully');
-        fetchOwnerFeedback(); // Refresh the list
+        await Swal.fire({ title: 'Deleted', text: 'Feedback deleted.', icon: 'success', timer: 1200, showConfirmButton: false })
+        fetchOwnerFeedback();
       }
     } catch (error) {
       toast.error('Failed to delete feedback');
     }
   };
+
+  const handleReply = async (item) => {
+    try {
+      const { value: text } = await Swal.fire({
+        title: 'Reply to review',
+        input: 'textarea',
+        inputPlaceholder: 'Write a helpful reply...',
+        inputValue: item.reply?.text || '',
+        showCancelButton: true,
+      })
+      if (!text) return
+      const res = await axios.post(`/api/feedback/reply/${item._id}`, { text })
+      if (res.data?.success) {
+        toast.success('Reply saved')
+        fetchOwnerFeedback()
+      } else {
+        toast.error(res.data?.message || 'Failed to save reply')
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || err.message)
+    }
+  }
 
   const getStatusBadge = (status) => {
     const statusConfig = {
@@ -429,6 +457,12 @@ const ManageFeedback = () => {
                        {/* Actions Column */}
                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                          <div className="flex space-x-2">
+                           <button
+                             onClick={() => handleReply(item)}
+                             className="inline-flex items-center px-3 py-1 border border-transparent text-xs font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                           >
+                             Reply
+                           </button>
                            {item.status !== 'approved' && (
                              <button
                                onClick={() => handleModerate(item._id, 'approved')}

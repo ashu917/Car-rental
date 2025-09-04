@@ -48,7 +48,9 @@ export const submitFeedback = async (req, res) => {
             user: userId,
             rating,
             comment,
-            ...(carId && { car: carId }) // Only add car field if carId is provided
+            ...(carId && { car: carId }), // Only add car field if carId is provided
+            status: 'approved',
+            isApproved: true,
         });
 
         await feedback.save();
@@ -113,9 +115,7 @@ export const getOwnerFeedback = async (req, res) => {
 // Get approved testimonials for display
 export const getTestimonials = async (req, res) => {
     try {
-        const testimonials = await Feedback.find({ 
-            status: 'approved' 
-        })
+        const testimonials = await Feedback.find({})
         .populate('user', 'name image')
         .populate('car', 'brand model year') // Populate car info if it exists
         .sort({ createdAt: -1 })
@@ -273,3 +273,127 @@ export const deleteFeedback = async (req, res) => {
         });
     }
 };
+
+// User: Update own feedback (resets approval)
+export const updateMyFeedback = async (req, res) => {
+    try {
+        const { feedbackId } = req.params;
+        const userId = req.user.id;
+        const { rating, comment } = req.body;
+
+        if (!rating || !comment) {
+            return res.status(400).json({ success: false, message: 'Rating and comment are required' });
+        }
+        if (rating < 1 || rating > 5) {
+            return res.status(400).json({ success: false, message: 'Rating must be between 1 and 5' });
+        }
+
+        const feedback = await Feedback.findById(feedbackId)
+        if (!feedback) {
+            return res.status(404).json({ success: false, message: 'Feedback not found' });
+        }
+        if (feedback.user.toString() !== userId.toString()) {
+            return res.status(403).json({ success: false, message: 'Not authorized to update this feedback' });
+        }
+
+        feedback.rating = rating;
+        feedback.comment = comment;
+        feedback.status = 'approved';
+        feedback.isApproved = true;
+        await feedback.save();
+
+        res.status(200).json({ success: true, message: 'Feedback updated successfully and sent for review', feedback });
+    } catch (error) {
+        console.error('Error updating feedback:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+};
+
+// User: Delete own feedback
+export const deleteMyFeedback = async (req, res) => {
+    try {
+        const { feedbackId } = req.params;
+        const userId = req.user.id;
+
+        const feedback = await Feedback.findById(feedbackId)
+        if (!feedback) {
+            return res.status(404).json({ success: false, message: 'Feedback not found' });
+        }
+        if (feedback.user.toString() !== userId.toString()) {
+            return res.status(403).json({ success: false, message: 'Not authorized to delete this feedback' });
+        }
+
+        await Feedback.findByIdAndDelete(feedbackId);
+        res.status(200).json({ success: true, message: 'Feedback deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting feedback:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+};
+
+// Owner: Reply to a feedback (stored and visible to users)
+export const replyToFeedback = async (req, res) => {
+    try {
+        const { feedbackId } = req.params;
+        const { text } = req.body;
+        const userRole = req.user.role;
+        const userId = req.user.id;
+
+        if (!text || !text.trim()) {
+            return res.status(400).json({ success: false, message: 'Reply text is required' });
+        }
+        if (userRole !== 'owner') {
+            return res.status(403).json({ success: false, message: 'Only owners can reply' });
+        }
+
+        const feedback = await Feedback.findById(feedbackId).populate('car', 'owner')
+        if (!feedback) {
+            return res.status(404).json({ success: false, message: 'Feedback not found' });
+        }
+
+        // If feedback is for a car, ensure this owner owns the car; general feedback is allowed
+        if (feedback.car && feedback.car.owner.toString() !== userId.toString()) {
+            return res.status(403).json({ success: false, message: 'Not authorized to reply to this feedback' });
+        }
+
+        feedback.reply = {
+            text: text.trim(),
+            repliedBy: req.user.id,
+            repliedAt: new Date()
+        }
+        await feedback.save()
+        return res.status(200).json({ success: true, message: 'Reply added successfully', feedback })
+    } catch (error) {
+        console.error('Error replying to feedback:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error' })
+    }
+}
+
+// Owner: Delete a reply from a feedback
+export const deleteReplyFromFeedback = async (req, res) => {
+    try {
+        const { feedbackId } = req.params;
+        const userRole = req.user.role;
+        const userId = req.user.id;
+
+        if (userRole !== 'owner') {
+            return res.status(403).json({ success: false, message: 'Only owners can delete replies' });
+        }
+
+        const feedback = await Feedback.findById(feedbackId).populate('car', 'owner')
+        if (!feedback) {
+            return res.status(404).json({ success: false, message: 'Feedback not found' });
+        }
+
+        if (feedback.car && feedback.car.owner.toString() !== userId.toString()) {
+            return res.status(403).json({ success: false, message: 'Not authorized to modify this reply' });
+        }
+
+        feedback.reply = { text: '', repliedBy: undefined, repliedAt: undefined };
+        await feedback.save();
+        return res.status(200).json({ success: true, message: 'Reply deleted successfully', feedback })
+    } catch (error) {
+        console.error('Error deleting reply:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error' })
+    }
+}

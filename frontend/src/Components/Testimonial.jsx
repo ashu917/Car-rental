@@ -4,13 +4,14 @@ import { assets } from '../assets/assets';
 import { useAppContext } from './Context/AppContext';
 import FeedbackForm from './FeedbackForm';
 import { useAuth } from '../hooks/useAuth';
+import Swal from 'sweetalert2'
 
 const Testimonial = () => {
   const [testimonials, setTestimonials] = useState([]);
   const [showFeedbackForm, setShowFeedbackForm] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { axios } = useAppContext();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   // Fetch testimonials from API
   useEffect(() => {
@@ -49,6 +50,93 @@ const Testimonial = () => {
     // Refresh testimonials after new feedback
     window.location.reload();
   };
+
+  const openMyReviewEditor = async (testimonial) => {
+    try {
+      // Owner can reply/edit/delete on any testimonial visible here
+      if (user?.role === 'owner' && testimonial?._id) {
+        const { value: text, isConfirmed, isDenied } = await Swal.fire({
+          title: 'Reply to review',
+          input: 'textarea',
+          inputPlaceholder: 'Write a helpful reply... ',
+          inputValue: testimonial.reply?.text || '',
+          showDenyButton: !!testimonial.reply?.text,
+          denyButtonText: 'Delete reply',
+          showCancelButton: true,
+          confirmButtonText: 'Save reply'
+        })
+        if (isConfirmed) {
+          if (!text) return
+          const res = await axios.post(`/api/feedback/reply/${testimonial._id}`, { text })
+          if (res.data?.success) {
+            await Swal.fire({ title: 'Saved', text: 'Reply saved.', icon: 'success', timer: 1200, showConfirmButton: false })
+            window.location.reload()
+          }
+          return
+        }
+        if (isDenied) {
+          const ok = await Swal.fire({ title: 'Delete reply?', text: 'This will remove your reply.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#e02424' })
+          if (!ok.isConfirmed) return
+          const del = await axios.delete(`/api/feedback/reply/${testimonial._id}`)
+          if (del.data?.success) {
+            await Swal.fire({ title: 'Deleted', text: 'Reply removed.', icon: 'success', timer: 1200, showConfirmButton: false })
+            window.location.reload()
+          }
+          return
+        }
+      }
+      // Only allow edit/delete for the logged user's own card
+      const res = await axios.get('/api/feedback/user')
+      const my = res.data?.feedback
+      if (!my || (testimonial?._id && testimonial._id !== my._id)) {
+        return
+      }
+      const result = await Swal.fire({
+        title: 'Your Review',
+        html:
+          `<div class="text-left">`+
+          `<label class="block text-sm text-gray-600 mb-1">Rating (1-5)</label>`+
+          `<input id="swal-rating" type="number" min="1" max="5" class="swal2-input" value="${my?.rating || 5}">`+
+          `<label class="block text-sm text-gray-600 mb-1">Comment</label>`+
+          `<textarea id="swal-comment" class="swal2-textarea" maxlength="500">${my?.comment || ''}</textarea>`+
+          `</div>`,
+        focusConfirm: false,
+        showDenyButton: true,
+        showCancelButton: true,
+        confirmButtonText: 'Save',
+        denyButtonText: 'Delete',
+        preConfirm: () => {
+          const rating = Number((document.getElementById('swal-rating') || {}).value)
+          const comment = (document.getElementById('swal-comment') || {}).value
+          if (!rating || rating < 1 || rating > 5) return Swal.showValidationMessage('Enter rating between 1 and 5')
+          if (!comment || !comment.trim()) return Swal.showValidationMessage('Comment is required')
+          return { rating, comment: comment.trim() }
+        }
+      })
+      if (result.isConfirmed && result.value) {
+        const upd = await axios.patch(`/api/feedback/user/${my._id}`, result.value)
+        if (upd.data?.success) {
+          await Swal.fire({ title: 'Saved', text: 'Your review was updated.', icon: 'success', timer: 1400, showConfirmButton: false })
+          window.location.reload()
+        }
+        return
+      }
+      // if Delete button clicked
+      if (result.isDenied) {
+        const ok = await Swal.fire({ title: 'Delete your review?', text: 'This cannot be undone.', icon: 'warning', showCancelButton: true, confirmButtonColor: '#e02424' })
+        if (!ok.isConfirmed) return
+        const del = await axios.delete(`/api/feedback/user/${my._id}`)
+        if (del.data?.success) {
+          await Swal.fire({ title: 'Deleted', text: 'Your review was deleted.', icon: 'success', timer: 1200, showConfirmButton: false })
+          window.location.reload()
+        }
+      }
+    } catch (err) {
+      // no-op for others
+    }
+  }
+
+  
   return (
      <div className="py-28 px-6 md:px-16 lg:px-24 xl:px-44 bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50">
             <Title title="What Our Customer Say"  subTitle="Real feedback from our valued customers about their experience with CarRental."/>
@@ -62,6 +150,7 @@ const Testimonial = () => {
                 <img src={assets.addIcon} alt="add" className="w-5 h-5 brightness-300" />
                 {isAuthenticated() ? 'Share Your Experience' : 'Login to Share Feedback'}
               </button>
+              
               <p className="text-sm text-gray-600 mt-3">
                 Your feedback will be reviewed and may be published as a testimonial
               </p>
@@ -76,7 +165,7 @@ const Testimonial = () => {
             ) : testimonials.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 mt-18">
                   {testimonials.map((testimonial, index) => (
-                      <div key={index} className="bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 border border-white/30 max-w-xs">
+                      <div key={index} onClick={() => openMyReviewEditor(testimonial)} className="bg-white/90 backdrop-blur-sm p-8 rounded-2xl shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-2 border border-white/30 max-w-xs cursor-pointer">
                           <div className="flex items-center gap-4 mb-6">
                               <img 
                                 className="w-14 h-14 rounded-full ring-4 ring-indigo-100 shadow-lg object-cover" 
@@ -110,6 +199,15 @@ const Testimonial = () => {
                             </div>
                           )}
                           <p className="text-gray-700 max-w-90 leading-relaxed italic">"{testimonial.comment}"</p>
+                          {testimonial.reply?.text && (
+                            <div className="mt-4 p-3 bg-indigo-50 rounded-lg border border-indigo-100">
+                              <p className="text-xs text-indigo-600 font-semibold mb-1">Owner Reply</p>
+                              <p className="text-sm text-gray-700">{testimonial.reply.text}</p>
+                              {testimonial.reply.repliedAt && (
+                                <p className="text-xs text-gray-400 mt-1">{new Date(testimonial.reply.repliedAt).toLocaleDateString()}</p>
+                              )}
+                            </div>
+                          )}
                       </div>
                   ))}
               </div>
